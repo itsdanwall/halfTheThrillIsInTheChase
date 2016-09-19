@@ -6,10 +6,15 @@
 
 setwd("/git_repositories/halfTheThrillIsInTheChase/")
 
+library(dplyr)
+library(truncnorm)
+library(ggplot2)
+library(plotrix)
+
 tbl1 <- read.csv("table1.csv", stringsAsFactors = FALSE)
 
 #----functions ----
-
+# This function takes in a data frame and creates standard deviation s
 sd_samp <- function(df, reps) {
   nper <- as.numeric(df[1, "n_per"])
   minscore <- as.numeric(df[1, "min_score"])
@@ -28,10 +33,7 @@ sd_samp <- function(df, reps) {
 }
 
 
-library(dplyr)
-library(truncnorm)
-library(ggplot2)
-library(plotrix)
+
 # add in the number of participants
 tbl1 <- tbl1 %>%
   mutate(n_per = 11,
