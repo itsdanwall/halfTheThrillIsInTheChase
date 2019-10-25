@@ -72,7 +72,7 @@ tbl1 <- merge(tbl1, tbl1_sum)
 
 
 ```{r SimulateSDs}
-reps <- 100000
+reps <- 10000
 
 # simulate SDs
 tbl1_reps <- tbl1 %>%
@@ -152,7 +152,8 @@ sim_meanpsi <- tbl1_reps_sum %>%
   group_by(n_rep) %>%
   # get mean psi for each replication
   summarise(mean_psi_sim = mean(psi_sim),
-            psi_obs = psi_obs[1]) %>%
+            # changed this
+            psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
 ```
@@ -172,9 +173,207 @@ sim_meanpsi %>%
   theme_classic()
 ```
 
+
+## Looking at just the dvs
+
+```{r}
+dv_sim_meanpsi <- tbl1_reps_sum %>%
+  filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
+  group_by(n_rep) %>%
+  # get mean psi for each replication
+  summarise(mean_psi_sim = mean(psi_sim),
+            psi_obs = mean(psi_obs)) %>%
+  # get the number of simulated SD's which are larger than the observed
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+
+
+
+```
+
 # Further note
 
 This study is on a similar topic to Sanna et al (2011). 
 Both Sanna and Nielsen were affiliated with the University of North Carolina. http://u.arizona.edu/~jesper/Vita.pdf
 https://sites.google.com/view/lawrencejsanna/employment?authuser=0
+
+
+
+# Correlated 
+
+```{r}
+library(MASS)
+library(mvtnorm)
+```
+
+
+How do I do the correlated analysis?
+Need to bring in every item
+
+
+## just look at the dependent variables
+
+```{r}
+# just look at the three main dependent variables
+
+tb1_dvs <- tbl1 %>% 
+  filter(variable %in% c("prod_eval", "wtp","app_sen_ind"))
+
+# load packages
+library(mvtnorm)
+library(tmvtnorm)
+library(matrixcalc)
+library(corpcor)
+library(tidyverse)
+
+# set up correlation and covariance matrix
+correlation <- .9
+sigma <- diag(1, 3, 3)
+sigma[sigma == 0] <- correlation
+# make the pooled sd's variances
+diag(sigma) <- (c(1.71, 0.8026, 1.061))^2
+# number of replications
+nrep <- 1e5
+
+# make sigma positive definite
+# have to add tolerace
+# from: https://stackoverflow.com/questions/27176595/error-sigma-must-be-positive-definite
+sigma <- make.positive.definite(sigma, tol = 1e-3)
+# check that the determinate isn't 0
+det(sigma)
+
+
+# INPUT:
+## means: observed means
+## sigma: covariance matrix (same for every condition based on pooled sd's and correlation)
+
+# OUTPUT:
+## standard deviations of the three DVs from a sample from a multivariate normal distribution 
+sd_cor_fn <- function(means, sigma) {
+  dvs <- rtmvnorm(
+    11,
+    mean = means,
+    sigma = sigma,
+    lower = c(1, 1, 0),
+    upper = c(7, 7, 10)
+  )
+  sds <- apply(dvs, 2, sd)
+  names(sds) <- c("app_sen_ind", "prod_eval", "wtp")
+  sds
+}
+
+
+# get the standard deviations for each replication
+ctrl3 <- replicate(nrep, sd_cor_fn(means = 
+                            c(2.33, 1.35, 0.96),
+                          sigma2))
+
+ctrl3_df <- t(ctrl3) %>% as.data.frame()  %>% mutate(cond = "ctrl_3",
+                                                    nrep = 1:n())
+
+
+
+ctrl2 <- replicate(nrep, sd_cor_fn(means = 
+                            c(1.87, 1.48, 0.85),
+                          sigma2))
+
+ctrl2_df <- t(ctrl2) %>% as.data.frame() %>% mutate(cond = "ctrl_2",
+                                                    nrep = 1:n())
+
+
+
+
+ctrl1 <- replicate(nrep, sd_cor_fn(means = 
+                            c(2.05, 1.31, 0.19),
+                          sigma2))
+
+ctrl1_df <- t(ctrl1) %>% as.data.frame() %>% mutate(cond = "ctrl_1",
+                                                  nrep = 1:n())
+
+avoid <- replicate(nrep, sd_cor_fn(means = 
+                            c(1.91, 1.41, 0.33),
+                          sigma2))
+
+avoid_df <- t(avoid) %>% as.data.frame() %>% mutate(cond = "avoid",
+                                                    nrep = 1:n())
+
+apprch <- replicate(nrep, sd_cor_fn(means = 
+                            c(3.70, 2.28, 1.49),
+                          sigma2))
+
+apprch_df <- t(apprch) %>% as.data.frame() %>% mutate(cond = "apprch",
+                                                    nrep = 1:n())
+
+ctrl3_df <- ctrl3_df %>% 
+  pivot_longer(cols = -c(nrep, cond))
+ctrl2_df <- ctrl2_df %>% 
+  pivot_longer(cols = -c(nrep, cond))
+ctrl1_df <- ctrl1_df %>% 
+  pivot_longer(cols = -c(nrep, cond))
+avoid_df <- avoid_df %>% 
+  pivot_longer(cols = -c(nrep, cond))
+apprch_df <- apprch_df %>% 
+  pivot_longer(cols = -c(nrep, cond))
+
+ctrls <- bind_rows(ctrl3_df, 
+          ctrl2_df, 
+          ctrl1_df,
+          avoid_df,
+          apprch_df) %>% 
+  rename(variable = name)
+
+sd_sd_sim <- ctrls %>% 
+  group_by(variable, nrep) %>% 
+  summarise(sd_sd_sim = sd(value),
+            pooled_sd_sim = mean(value)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
+         psi_sim = sd_sd_sim/se_sd_sim)
+
+sd_sd_sim <- sd_sd_sim %>% 
+  left_join(tbl1_sum)
+
+sd_sd_sim %>% 
+  ggplot(aes(x = sd_sd_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = sd_sd_obs)) +
+  facet_grid(.~variable)
+
+sim_meanpsi <- sd_sd_sim %>%
+  group_by(nrep) %>%
+  # get mean psi for each replication
+  summarise(mean_psi_sim = mean(psi_sim),
+            psi_obs = psi_obs[1]) %>%
+  # get the number of simulated SD's which are larger than the observed
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+
+
+
+```
+
+```{r}
+sim_meanpsi %>% 
+  ggplot(aes(x = mean_psi_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = psi_obs)) +
+  theme_classic()
+
+```
+Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+```{r}
+# Need to look at what happens 
+tbl1_reps_sum %>%
+  group_by(n_rep) %>%
+  # get mean psi for each replication
+  summarise(mean_psi_sim = mean(psi_sim),
+            psi_obs = psi_obs[1]) %>%
+  # get the number of simulated SD's which are larger than the observed
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+```
+
+
+# Other anomalies
+
+Given that the sample size was 55 and there were 5 conditions, we should expect there to be 11 people in each group.
+Given this we should expect the degrees of freedom for t-tests comparing the two conditions to be 20; however, the reported degrees is 50. 
 
