@@ -198,19 +198,20 @@ https://sites.google.com/view/lawrencejsanna/employment?authuser=0
 
 
 
-# Correlated 
+# Assuming DVs are correlated 
 
 ```{r}
-library(MASS)
+# load packages
 library(mvtnorm)
+library(tmvtnorm)
+library(matrixcalc)
+library(corpcor)
+library(tidyverse)
 ```
 
 
-How do I do the correlated analysis?
-Need to bring in every item
 
-
-## just look at the dependent variables
+## Correlated at $r = .9$
 
 ```{r}
 # just look at the three main dependent variables
@@ -218,12 +219,7 @@ Need to bring in every item
 tb1_dvs <- tbl1 %>% 
   filter(variable %in% c("prod_eval", "wtp","app_sen_ind"))
 
-# load packages
-library(mvtnorm)
-library(tmvtnorm)
-library(matrixcalc)
-library(corpcor)
-library(tidyverse)
+
 
 # set up correlation and covariance matrix
 correlation <- .9
@@ -231,8 +227,6 @@ sigma <- diag(1, 3, 3)
 sigma[sigma == 0] <- correlation
 # make the pooled sd's variances
 diag(sigma) <- (c(1.71, 0.8026, 1.061))^2
-# number of replications
-nrep <- 1e5
 
 # make sigma positive definite
 # have to add tolerace
@@ -242,87 +236,134 @@ sigma <- make.positive.definite(sigma, tol = 1e-3)
 det(sigma)
 
 
+
+# Function which calculates SDs of DVs for correlated variables
 # INPUT:
-## means: observed means
-## sigma: covariance matrix (same for every condition based on pooled sd's and correlation)
+## means: observed means (need to be in the following order: app_sen_ind, prod_eval, wtp)
+## sigma: covariance matrix (same for every condition based on pooled sd's and equivalent correlations across conditions)
 
 # OUTPUT:
 ## standard deviations of the three DVs from a sample from a multivariate normal distribution 
 sd_cor_fn <- function(means, sigma) {
+  
+  # Pull from a truncated multivariate normal distribution
   dvs <- rtmvnorm(
-    11,
+    n = 11,
     mean = means,
     sigma = sigma,
     lower = c(1, 1, 0),
     upper = c(7, 7, 10)
   )
+  # Calc SDs and make pretty
   sds <- apply(dvs, 2, sd)
   names(sds) <- c("app_sen_ind", "prod_eval", "wtp")
   sds
 }
 
 
-# get the standard deviations for each replication
-ctrl3 <- replicate(nrep, sd_cor_fn(means = 
+# subset dataframe ith only three DVs
+tbl1_dvs <- tbl1 %>% 
+  filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
+  # arrange so consistent with function
+  arrange(variable)
+
+# run multiple times
+replicates <- tbl1_dvs %>%
+  group_by(manip) %>%
+  # 
+  group_modify(~ replicate(
+    reps, 
+    (sd_cor_fn(
+      means = .x %>% pull(mean),
+      sigma)
+    ) 
+    )%>% 
+      t() %>% 
+      as_tibble()
+    )
+
+# clean up dataframe
+replicates <- replicates %>% 
+  group_by(manip) %>% 
+  mutate(rep = 1:n())
+
+ctrl3 <- replicate(reps, sd_cor_fn(means = 
                             c(2.33, 1.35, 0.96),
-                          sigma2))
+                          sigma))
 
+# turn into a data frame
 ctrl3_df <- t(ctrl3) %>% as.data.frame()  %>% mutate(cond = "ctrl_3",
-                                                    nrep = 1:n())
+                                                    reps = 1:n())
 
-
-
-ctrl2 <- replicate(nrep, sd_cor_fn(means = 
+# control 2 condition
+ctrl2 <- replicate(reps, sd_cor_fn(means = 
                             c(1.87, 1.48, 0.85),
-                          sigma2))
+                          sigma))
 
 ctrl2_df <- t(ctrl2) %>% as.data.frame() %>% mutate(cond = "ctrl_2",
-                                                    nrep = 1:n())
+                                                    reps = 1:n())
 
 
 
-
-ctrl1 <- replicate(nrep, sd_cor_fn(means = 
+# control 1 condition
+ctrl1 <- replicate(reps, sd_cor_fn(means = 
                             c(2.05, 1.31, 0.19),
-                          sigma2))
+                          sigma))
 
 ctrl1_df <- t(ctrl1) %>% as.data.frame() %>% mutate(cond = "ctrl_1",
-                                                  nrep = 1:n())
+                                                  reps = 1:n())
 
-avoid <- replicate(nrep, sd_cor_fn(means = 
-                            c(1.91, 1.41, 0.33),
-                          sigma2))
+# Avoidance condition
+avoid <- replicate(reps, sd_cor_fn(means =  c(1.91, 1.41, 0.33),
+                          sigma))
 
 avoid_df <- t(avoid) %>% as.data.frame() %>% mutate(cond = "avoid",
-                                                    nrep = 1:n())
+                                                    reps = 1:n())
 
-apprch <- replicate(nrep, sd_cor_fn(means = 
+# Approach condition
+apprch <- replicate(reps, sd_cor_fn(means = 
                             c(3.70, 2.28, 1.49),
-                          sigma2))
+                          sigma))
 
 apprch_df <- t(apprch) %>% as.data.frame() %>% mutate(cond = "apprch",
-                                                    nrep = 1:n())
-
+                                                    reps = 1:n())
+# melt dataframes into long format
 ctrl3_df <- ctrl3_df %>% 
-  pivot_longer(cols = -c(nrep, cond))
+  pivot_longer(cols = -c(reps, cond))
 ctrl2_df <- ctrl2_df %>% 
-  pivot_longer(cols = -c(nrep, cond))
+  pivot_longer(cols = -c(reps, cond))
 ctrl1_df <- ctrl1_df %>% 
-  pivot_longer(cols = -c(nrep, cond))
+  pivot_longer(cols = -c(reps, cond))
 avoid_df <- avoid_df %>% 
-  pivot_longer(cols = -c(nrep, cond))
+  pivot_longer(cols = -c(reps, cond))
 apprch_df <- apprch_df %>% 
-  pivot_longer(cols = -c(nrep, cond))
+  pivot_longer(cols = -c(reps, cond))
 
-ctrls <- bind_rows(ctrl3_df, 
+# Combine data frames
+dvs <- bind_rows(ctrl3_df, 
           ctrl2_df, 
           ctrl1_df,
           avoid_df,
           apprch_df) %>% 
   rename(variable = name)
 
-sd_sd_sim <- ctrls %>% 
-  group_by(variable, nrep) %>% 
+
+# check on correlation between standard deviations to make sure it is what we expect
+# Need to correlate: 
+
+dvs_wider <- dvs %>% 
+  pivot_wider(id_cols = c(reps, variable), 
+              names_from = cond,
+              values_from = value)
+
+
+cor.test(dvs_wider$ctrl_3, dvs_wider$ctrl_2)
+
+```
+
+```{r}
+sd_sd_sim <- dvs_wider %>% 
+  group_by(variable, reps) %>% 
   summarise(sd_sd_sim = sd(value),
             pooled_sd_sim = mean(value)) %>%
     # get the simulated standard deviations and psi's
@@ -339,16 +380,17 @@ sd_sd_sim %>%
   facet_grid(.~variable)
 
 sim_meanpsi <- sd_sd_sim %>%
-  group_by(nrep) %>%
+  group_by(reps) %>%
   # get mean psi for each replication
   summarise(mean_psi_sim = mean(psi_sim),
-            psi_obs = psi_obs[1]) %>%
+            psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
 
 
 
 ```
+
 
 ```{r}
 sim_meanpsi %>% 
@@ -366,9 +408,9 @@ tbl1_reps_sum %>%
   group_by(n_rep) %>%
   # get mean psi for each replication
   summarise(mean_psi_sim = mean(psi_sim),
-            psi_obs = psi_obs[1]) %>%
+            psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
-  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE)) %>% View
 ```
 
 
