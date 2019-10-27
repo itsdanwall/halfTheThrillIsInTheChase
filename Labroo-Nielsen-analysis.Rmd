@@ -38,14 +38,14 @@ sd_samp <- function(df, reps) {
   
   # Simulate SDs
   # NOTE: I'm using a truncated normal distribution because they use a 1-7 scale
-  reps <- replicate(reps,
+  rep_d <- replicate(reps,
                     sd(rtruncnorm(nper, a = minscore, b = maxscore, mean = mean, 
                                   sd = pooledsd))) 
-  reps <- as.data.frame(reps)
+  reps_df <- as.data.frame(rep_d)
   
-  names(reps) <- "sd_rep"
+  names(reps_df) <- "sd_rep"
   
-  reps
+  reps_df
 }
 ```
 
@@ -190,11 +190,6 @@ dv_sim_meanpsi <- tbl1_reps_sum %>%
 
 ```
 
-# Further note
-
-This study is on a similar topic to Sanna et al (2011). 
-Both Sanna and Nielsen were affiliated with the University of North Carolina. http://u.arizona.edu/~jesper/Vita.pdf
-https://sites.google.com/view/lawrencejsanna/employment?authuser=0
 
 
 
@@ -209,18 +204,16 @@ library(corpcor)
 library(tidyverse)
 ```
 
-
-
 ## Correlated at $r = .9$
 
 This analysis assumes that the dependent variables are highly correlated. 
 When the DVs are correlated, their standard deviations should also be correlated across conditions.
-This correlation should make the tails of the distribution fatter. 
 
 Some issues with this:
 
-1. Compared to using a non-truncated multivariate normal distribution (Like your simulation), using a truncated normal distribution leads to smaller correlations between the sd of sd's when the mean's is close to the lower/upper bound because many samples hit the bounds. 
-2. I don't think that WTP is normally distributed (it should be something like a lognormal). 
+1. Compared to using a non-truncated multivariate normal distribution (Like your simulation), using a truncated normal distribution leads to smaller correlations between the sd of sd's when the mean's is close to the lower/upper bound. I think this is because many samples hit the bounds. See _Correlation between SD(SD) is smaller when means are close to boundaries_
+2. The covariance matrix wasn't positive semidefinite, so I ran a function which made the determinate > 0. 
+3. I don't think that WTP is normally distributed (it should be something like a lognormal). 
 
 ```{r}
 # just look at the three main dependent variables
@@ -300,38 +293,14 @@ replicates_longer <- replicates %>%
   pivot_longer(cols = c(app_sen_ind, prod_eval, wtp))
 ```
 
-```{r}
-reps_cors <- replicates_longer %>% 
-  group_by(reps, name) %>% 
-  summarise(sd_sd = sd(value)) %>% 
-  pivot_wider(names_from = name, values_from = sd_sd)
-
-
-cor(reps_cors[, -1])
-```
-
-
-```{r}
-# replicates_wider <- replicates_longer %>% 
-#   pivot_wider(id_cols = reps,
-#               values_from = value,
-#               names_from = c(manip, name)
-#               )
-```
-
-
-```{r}
-# check on correlation between items
-# cor.test(replicates_wider$ctrl1_app_sen_ind, replicates_wider$ctrl2_app_sen_ind)
-
-```
+### Correlation between standard deviations
 
 ```{r}
 reps_cors <- replicates %>% 
   group_by(reps) %>% 
-  summarise(sd_se_app = sd(app_sen_ind),
-            sd_se_prd = sd(prod_eval),
-            sd_se_wtp = sd(wtp))
+  summarise(sd_sd_app = sd(app_sen_ind),
+            sd_sd_prd = sd(prod_eval),
+            sd_sd_wtp = sd(wtp))
 
 cor(reps_cors[, -1])
 ```
@@ -360,9 +329,6 @@ sd_sd_sim_wide <- sd_sd_sim %>%
               values_from = sd_sd_sim,
               names_from = variable)
   
-cor.test(sd_sd_sim_wide$app_sen_ind, sd_sd_sim_wide$prod_eval)
-
-
 
 # density plot
 sd_sd_sim %>% 
@@ -378,8 +344,6 @@ sd_sd_sim %>%
 Now calculate $\psi$
 
 ```{r}
-
-
 sim_meanpsi <- sd_sd_sim %>%
   group_by(reps) %>%
   # get mean psi for each replication
@@ -398,20 +362,68 @@ sim_meanpsi %>%
 ```
 Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
 
+
+
+# Correlation between SD(SD) is smaller when means are close to boundaries
+
+Reminder: Scales were bounded at 1 and 7. WTP was bounded at 0
+
+When in the middle of the range, results are similar to your simulation. 
+$r = .9$
+
+$/mu = 3$
+
 ```{r}
-# Need to look at what happens 
-tbl1_reps_sum %>%
-  group_by(n_rep) %>%
-  # get mean psi for each replication
-  summarise(mean_psi_sim = mean(psi_sim),
-            psi_obs = mean(psi_obs)) %>%
-  # get the number of simulated SD's which are larger than the observed
-  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE)) %>% View
+r = .9  
+Sigma <- diag(1, 3, 3)
+Sigma[Sigma == 0] <- r
+ncond <- 5
+nrep <- 1000
+
+
+reps <- replicate(ncond*nrep, 
+                  sd_cor_fn(rep(4,3), Sigma))
+reps_wide <- t(reps) %>% 
+  as_tibble() %>% 
+  mutate(cond = rep(1:ncond, nrep),
+         rep = rep(1:nrep, each = ncond)) %>% 
+  group_by(rep) %>% 
+  summarise(sd_app_sen_ind = sd(app_sen_ind),
+            sd_prod_eval = sd(prod_eval),
+            sd_wtp = sd(wtp))
+
+# truncation depresses correlation between SDs when means are close to boundaries
+cor(reps_wide[, -1])
+```
+
+But when they're close to the endpoints they're smaller
+
+$/mu = 1.2$
+
+```{r}
+reps <- replicate(ncond*nrep, 
+                  sd_cor_fn(rep(1.2,3), Sigma))
+reps_wide <- t(reps) %>% 
+  as_tibble() %>% 
+  mutate(cond = rep(1:ncond, nrep),
+         rep = rep(1:nrep, each = ncond)) %>% 
+  group_by(rep) %>% 
+  summarise(sd_app_sen_ind = sd(app_sen_ind),
+            sd_prod_eval = sd(prod_eval),
+            sd_wtp = sd(wtp))
+
+# truncation depresses correlation between SDs when means are close to boundaries
+cor(reps_wide[, -1])
 ```
 
 
-# Other anomalies
+# Further note
 
-Given that the sample size was 55 and there were 5 conditions, we should expect there to be 11 people in each group.
+This study is on a similar topic to Sanna et al (2011). 
+Both Sanna and Nielsen were affiliated with the University of North Carolina. http://u.arizona.edu/~jesper/Vita.pdf
+https://sites.google.com/view/lawrencejsanna/employment?authuser=0
+
+
+Given that the sample size was 55 and there were 5 conditions, there should be 11 people in each group.
 Given this we should expect the degrees of freedom for t-tests comparing the two conditions to be 20; however, the reported degrees is 50. 
 
