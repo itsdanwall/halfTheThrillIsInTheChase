@@ -213,12 +213,19 @@ library(tidyverse)
 
 ## Correlated at $r = .9$
 
+This analysis assumes that the dependent variables are highly correlated. 
+When the DVs are correlated, their standard deviations should also be correlated across conditions.
+This correlation should make the tails of the distribution fatter. 
+
+Some issues with this:
+
+1. Compared to using a non-truncated multivariate normal distribution (Like your simulation), using a truncated normal distribution leads to smaller correlations between the sd of sd's when the mean's is close to the lower/upper bound because many samples hit the bounds. 
+2. I don't think that WTP is normally distributed (it should be something like a lognormal). 
+
 ```{r}
 # just look at the three main dependent variables
-
 tb1_dvs <- tbl1 %>% 
   filter(variable %in% c("prod_eval", "wtp","app_sen_ind"))
-
 
 
 # set up correlation and covariance matrix
@@ -261,7 +268,7 @@ sd_cor_fn <- function(means, sigma) {
 }
 
 
-# subset dataframe ith only three DVs
+# subset dataframe with only three DVs
 tbl1_dvs <- tbl1 %>% 
   filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
   # arrange so consistent with function
@@ -270,6 +277,7 @@ tbl1_dvs <- tbl1 %>%
 # run multiple times
 replicates <- tbl1_dvs %>%
   group_by(manip) %>%
+  arrange(variable) %>% 
   # 
   group_modify(~ replicate(
     reps, 
@@ -285,99 +293,92 @@ replicates <- tbl1_dvs %>%
 # clean up dataframe
 replicates <- replicates %>% 
   group_by(manip) %>% 
-  mutate(rep = 1:n())
+  mutate(reps = 1:n())
 
-ctrl3 <- replicate(reps, sd_cor_fn(means = 
-                            c(2.33, 1.35, 0.96),
-                          sigma))
+# create long version of dataframe 
+replicates_longer <- replicates %>% 
+  pivot_longer(cols = c(app_sen_ind, prod_eval, wtp))
+```
 
-# turn into a data frame
-ctrl3_df <- t(ctrl3) %>% as.data.frame()  %>% mutate(cond = "ctrl_3",
-                                                    reps = 1:n())
-
-# control 2 condition
-ctrl2 <- replicate(reps, sd_cor_fn(means = 
-                            c(1.87, 1.48, 0.85),
-                          sigma))
-
-ctrl2_df <- t(ctrl2) %>% as.data.frame() %>% mutate(cond = "ctrl_2",
-                                                    reps = 1:n())
+```{r}
+reps_cors <- replicates_longer %>% 
+  group_by(reps, name) %>% 
+  summarise(sd_sd = sd(value)) %>% 
+  pivot_wider(names_from = name, values_from = sd_sd)
 
 
-
-# control 1 condition
-ctrl1 <- replicate(reps, sd_cor_fn(means = 
-                            c(2.05, 1.31, 0.19),
-                          sigma))
-
-ctrl1_df <- t(ctrl1) %>% as.data.frame() %>% mutate(cond = "ctrl_1",
-                                                  reps = 1:n())
-
-# Avoidance condition
-avoid <- replicate(reps, sd_cor_fn(means =  c(1.91, 1.41, 0.33),
-                          sigma))
-
-avoid_df <- t(avoid) %>% as.data.frame() %>% mutate(cond = "avoid",
-                                                    reps = 1:n())
-
-# Approach condition
-apprch <- replicate(reps, sd_cor_fn(means = 
-                            c(3.70, 2.28, 1.49),
-                          sigma))
-
-apprch_df <- t(apprch) %>% as.data.frame() %>% mutate(cond = "apprch",
-                                                    reps = 1:n())
-# melt dataframes into long format
-ctrl3_df <- ctrl3_df %>% 
-  pivot_longer(cols = -c(reps, cond))
-ctrl2_df <- ctrl2_df %>% 
-  pivot_longer(cols = -c(reps, cond))
-ctrl1_df <- ctrl1_df %>% 
-  pivot_longer(cols = -c(reps, cond))
-avoid_df <- avoid_df %>% 
-  pivot_longer(cols = -c(reps, cond))
-apprch_df <- apprch_df %>% 
-  pivot_longer(cols = -c(reps, cond))
-
-# Combine data frames
-dvs <- bind_rows(ctrl3_df, 
-          ctrl2_df, 
-          ctrl1_df,
-          avoid_df,
-          apprch_df) %>% 
-  rename(variable = name)
+cor(reps_cors[, -1])
+```
 
 
-# check on correlation between standard deviations to make sure it is what we expect
-# Need to correlate: 
+```{r}
+# replicates_wider <- replicates_longer %>% 
+#   pivot_wider(id_cols = reps,
+#               values_from = value,
+#               names_from = c(manip, name)
+#               )
+```
 
-dvs_wider <- dvs %>% 
-  pivot_wider(id_cols = c(reps, variable), 
-              names_from = cond,
-              values_from = value)
 
-
-cor.test(dvs_wider$ctrl_3, dvs_wider$ctrl_2)
+```{r}
+# check on correlation between items
+# cor.test(replicates_wider$ctrl1_app_sen_ind, replicates_wider$ctrl2_app_sen_ind)
 
 ```
 
 ```{r}
-sd_sd_sim <- dvs_wider %>% 
-  group_by(variable, reps) %>% 
+reps_cors <- replicates %>% 
+  group_by(reps) %>% 
+  summarise(sd_se_app = sd(app_sen_ind),
+            sd_se_prd = sd(prod_eval),
+            sd_se_wtp = sd(wtp))
+
+cor(reps_cors[, -1])
+```
+
+
+Plot of simulated sds compared to observed sds
+
+```{r}
+# create dataframe which looks at each DV
+sd_sd_sim <- replicates_longer %>% 
+  group_by(name, reps) %>% 
   summarise(sd_sd_sim = sd(value),
             pooled_sd_sim = mean(value)) %>%
     # get the simulated standard deviations and psi's
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
-         psi_sim = sd_sd_sim/se_sd_sim)
+         psi_sim = sd_sd_sim/se_sd_sim) %>% 
+  rename(variable = name)
 
+# join with observed sd of sds 
 sd_sd_sim <- sd_sd_sim %>% 
   left_join(tbl1_sum)
 
+sd_sd_sim_wide <- sd_sd_sim %>% 
+  dplyr::select(reps, variable, sd_sd_sim) %>% 
+  pivot_wider(id_cols = reps,
+              values_from = sd_sd_sim,
+              names_from = variable)
+  
+cor.test(sd_sd_sim_wide$app_sen_ind, sd_sd_sim_wide$prod_eval)
+
+
+
+# density plot
 sd_sd_sim %>% 
   ggplot(aes(x = sd_sd_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = sd_sd_obs)) +
-  facet_grid(.~variable)
+  facet_grid(variable~.) +
+  theme_classic()
+
+
+```
+
+Now calculate $\psi$
+
+```{r}
+
 
 sim_meanpsi <- sd_sd_sim %>%
   group_by(reps) %>%
@@ -388,11 +389,6 @@ sim_meanpsi <- sd_sd_sim %>%
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
 
 
-
-```
-
-
-```{r}
 sim_meanpsi %>% 
   ggplot(aes(x = mean_psi_sim)) +
   geom_density() +
