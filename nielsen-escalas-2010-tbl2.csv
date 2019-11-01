@@ -1,0 +1,9 @@
+processing_inst,font,ad_type,mean,se
+standard,easy,narrative,56.9,3.98
+standard,easy,analytical,59.15,3.96
+standard,difficult,narrative,66.16,4.16
+standard,difficult,analytical,49.06,4.08
+skeptic,easy,narrative,55.87,3.97
+skeptic,easy,analytical,59.87,3.96
+skeptic,difficult,narrative,44.95,3.96
+skeptic,difficult,analytical,61.46,3.9

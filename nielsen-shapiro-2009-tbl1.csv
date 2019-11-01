@@ -1,0 +1,7 @@
+threat_rel,word_type,fear_lvl,mean,se
+Yes,Drinking,low,423,34
+Yes,Drinking,high,534,29
+Yes,driving,low,477,32
+Yes,driving,high,573,27
+no,non_threat,low,536,29
+no,non_threat,high,567,25

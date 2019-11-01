@@ -1,0 +1,13 @@
+cond_emo,emo_brnd_lnk, variable,mean,se,min_score,max_score
+Neutral,low,no_apprch,4.91,0.51,1,7
+Neutral,low,apprch_sens,4.8,0.51,1,7
+Neutral,low,correction,6.15,0.62,1,7
+Neutral,high,no_apprch,4.69,0.24,1,7
+Neutral,high,apprch_sens,5.71,0.3,1,7
+Neutral,high,correction,4.58,0.28,1,7
+Happy,low,no_apprch,5.38,0.39,1,7
+Happy,low,apprch_sens,5.73,0.42,1,7
+Happy,low,correction,5.36,0.51,1,7
+Happy,high,no_apprch,5.76,0.3,1,7
+Happy,high,apprch_sens,5.72,0.37,1,7
+Happy,high,correction,5.9,0.35,1,7

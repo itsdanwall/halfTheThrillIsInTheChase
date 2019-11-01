@@ -13,10 +13,14 @@ output:
 
 
 ```{r Setup, include=FALSE}
-library(dplyr)
 library(truncnorm)
-library(ggplot2)
-
+# load packages
+library(mvtnorm)
+library(tmvtnorm)
+library(matrixcalc)
+library(corpcor)
+library(tidyverse)
+library(MBESS)
 # this dataframe is the long version of Table in the paper
 tbl1 <- read.csv("table1.csv", stringsAsFactors = FALSE)
 ```
@@ -196,12 +200,7 @@ dv_sim_meanpsi <- tbl1_reps_sum %>%
 # Assuming DVs are correlated 
 
 ```{r}
-# load packages
-library(mvtnorm)
-library(tmvtnorm)
-library(matrixcalc)
-library(corpcor)
-library(tidyverse)
+
 ```
 
 ## Correlated at $r = .9$
@@ -221,10 +220,14 @@ tb1_dvs <- tbl1 %>%
   filter(variable %in% c("prod_eval", "wtp","app_sen_ind"))
 
 
-# set up correlation and covariance matrix
+# set up correlation matrix
 correlation <- .9
-sigma <- diag(1, 3, 3)
-sigma[sigma == 0] <- correlation
+cor_mat <- diag(1, 3, 3)
+cor_mat[cor_mat == 0] <- correlation
+
+sigma <- cor2cov(cor_mat, c(1.71, 0.8026, 1.061))
+
+
 # make the pooled sd's variances
 diag(sigma) <- (c(1.71, 0.8026, 1.061))^2
 
@@ -416,6 +419,184 @@ reps_wide <- t(reps) %>%
 cor(reps_wide[, -1])
 ```
 
+# Control variables
+
+```{r}
+tbl1_ctrls <- tbl1 %>% 
+  filter(!(variable %in% c("prod_eval", "wtp","app_sen_ind"))) %>% 
+  mutate(variable = factor(variable,
+                        levels = c("att_asn",
+                                   "att_unus",
+                                   "gen_app_avo",
+                                   "mood",
+                                   "out_ctrl",
+                                   "task_invol")))
+
+
+
+# set up correlation and covariance matrix
+correlation <- .9
+sigma <- matrix(rep(NA, 36), nrow = 6, ncol = 6)
+
+# put variances on diagonal
+diag(sigma) <- tbl1_ctrls %>% group_by(variable) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev) %>% `^`(2)
+sigma[is.na(sigma)] <- correlation
+# make the pooled sd's variances
+
+
+# make sigma positive definite
+# have to add tolerace
+# from: https://stackoverflow.com/questions/27176595/error-sigma-must-be-positive-definite
+sigma <- make.positive.definite(sigma, tol = 1e-3)
+# check that the determinate isn't 0
+det(sigma)
+
+
+
+
+# Function which calculates SDs of DVs for correlated variables
+# INPUT:
+## means: observed means (need to be in the following order: app_sen_ind, prod_eval, wtp)
+## sigma: covariance matrix (same for every condition based on pooled sd's and equivalent correlations across conditions)
+
+# OUTPUT:
+## standard deviations of the three DVs from a sample from a multivariate normal distribution 
+sd_cor_fn2 <- function(means, sigma, lower, upper, names, n) {
+  
+  # Pull from a truncated multivariate normal distribution
+  measures <- rtmvnorm(
+    n = n,
+    mean = means,
+    sigma = sigma,
+    lower = lower,
+    upper = upper
+  )
+  # Calc SDs and make pretty
+  sds <- apply(measures, 2, sd)
+  names(sds) <- names
+  sds
+}
+sd_cor_fn2a <- function(means, sigma, lower, upper, names, n) {
+  
+  # Pull from a truncated multivariate normal distribution
+  measures <- rtmvnorm(
+    n = n,
+    mean = means,
+    sigma = sigma,
+    lower = lower,
+    upper = upper
+  )
+  measures
+}
+
+smp <-   sd_cor_fn2a(
+    means =  tbl1_ctrls %>% filter(manip == "approach") %>%  pull(mean),
+    sigma = sigma,
+    lower = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(min_score),
+    upper = tbl1_ctrls %>% filter(manip == "approach") %>%   pull(max_score),
+    names = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(variable),
+    n = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(n_per) %>% `[`(1)
+  )
+
+  
+  # run multiple times
+  replicates <- tbl1_ctrls %>%
+    group_by(manip) %>%
+    arrange(variable) %>%
+    #
+    group_modify(~ replicate(reps,
+                             (
+                               sd_cor_fn2(
+                                 means = .x %>% pull(mean),
+                                 sigma,
+                                 lower = .x %>%  pull(min_score),
+                                 upper = .x %>%   pull(max_score),
+                                 names = .x %>%  pull(variable),
+                                 n = .x %>%  pull(n_per) %>% `[`(1)
+                               )
+                             )) %>%
+                   t() %>%
+                   as_tibble()
+                 )
+  
+# clean up dataframe
+replicates <- replicates %>% 
+  group_by(manip) %>% 
+  mutate(reps = 1:n())
+
+# create long version of dataframe
+replicates_longer <- replicates %>%
+  pivot_longer(cols = c(att_asn, att_unus, gen_app_avo, mood, out_ctrl, task_invol))
+
+```
+
+```{r}
+reps_cors <- replicates_longer %>% 
+  group_by(reps, name) %>% 
+  summarise(sd_sd_val = sd(value)) %>% 
+  pivot_wider(names_from= name, values_from = sd_sd_val)
+
+cor(reps_cors[, -1])
+```
+
+
+Plot of simulated sds compared to observed sds
+
+```{r}
+# create dataframe which looks at each DV
+sd_sd_sim <- replicates_longer %>% 
+  group_by(name, reps) %>% 
+  summarise(sd_sd_sim = sd(value),
+            pooled_sd_sim = mean(value)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
+         psi_sim = sd_sd_sim/se_sd_sim) %>% 
+  rename(variable = name)
+
+# join with observed sd of sds 
+sd_sd_sim <- sd_sd_sim %>% 
+  left_join(tbl1_sum)
+
+sd_sd_sim_wide <- sd_sd_sim %>% 
+  dplyr::select(reps, variable, sd_sd_sim) %>% 
+  pivot_wider(id_cols = reps,
+              values_from = sd_sd_sim,
+              names_from = variable)
+  
+
+# density plot
+sd_sd_sim %>% 
+  ggplot(aes(x = sd_sd_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = sd_sd_obs)) +
+  facet_grid(variable~.) +
+  theme_classic()
+
+
+```
+
+Now calculate $\psi$
+
+```{r}
+sim_meanpsi <- sd_sd_sim %>%
+  group_by(reps) %>%
+  # get mean psi for each replication
+  summarise(mean_psi_sim = mean(psi_sim),
+            psi_obs = mean(psi_obs)) %>%
+  # get the number of simulated SD's which are larger than the observed
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+
+
+sim_meanpsi %>% 
+  ggplot(aes(x = mean_psi_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = psi_obs)) +
+  theme_classic()
+
+```
+Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+
 
 # Further note
 
@@ -426,4 +607,20 @@ https://sites.google.com/view/lawrencejsanna/employment?authuser=0
 
 Given that the sample size was 55 and there were 5 conditions, there should be 11 people in each group.
 Given this we should expect the degrees of freedom for t-tests comparing the two conditions to be 20; however, the reported degrees is 50. 
+
+
+# Study 2 data
+
+> Half of the participants then learned that they would watch clips from this movie at the end of the experimental session (the approach-sadness condition). The remaining participants moved directly on to the con- ditioning experiment.
+> All participants next completed the conditioning experi-
+ment, titled “brand evaluation study,” in which they were exposed to one of six sequences (see app. B) of the condi- tioning stimulus materials (conditioning procedures adapted directly from Stuart et al. 1987
+
+> Participants then completed a measure designed to test per-
+ceived brand-emotion diagnosticity during the brand-learning phase (modeled after Lee 2001; also see Pleyers et al. 2007). We expected participants who approached sadness to report more positive evaluations of brands conditioned with sad stimuli when emotion was considered diagnostic of the brand (vs. not). Participants responded to each of the following three questions: (1) When viewing different brands during the ex- periment, did you notice systematic links between brand-emo- tion pairings? (2) Was your attention drawn to systematic brand-emotion pairings? (3) Can you state anything about the brand logo presentations (on the computer screen) that stood out?
+
+
+Not sure how to do this
+
+# Easier is not always better table 1
+
 
