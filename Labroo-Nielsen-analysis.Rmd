@@ -65,8 +65,12 @@ tbl1 <- tbl1 %>%
 tbl1_sum <- tbl1 %>%
   group_by(variable) %>%
   summarise(sd_sd_obs = sd(sd),
+            # Uri calculates pooled sd as 
             pooled_sd_obs = mean(sd),
             mean_n_obs = mean(n_per),
+            # standard error of the pooled standard devaition
+            # divide pooled standard deviation by the square root of 2 * n per condition (Is this the same for all implementations?)
+            # http://urisohn.com/sohn_files/data/JustPostIt/SAS%20Code/(2)%20SAS%20-%20Sanna%20JESP%202011%20-%20bootstrapping.sas
             se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
             psi_obs = sd_sd_obs / se_sds_obs)
 
@@ -178,30 +182,9 @@ sim_meanpsi %>%
 ```
 
 
-## Looking at just the dvs
-
-```{r}
-dv_sim_meanpsi <- tbl1_reps_sum %>%
-  filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
-  group_by(n_rep) %>%
-  # get mean psi for each replication
-  summarise(mean_psi_sim = mean(psi_sim),
-            psi_obs = mean(psi_obs)) %>%
-  # get the number of simulated SD's which are larger than the observed
-  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
-
-
-
-```
-
-
 
 
 # Assuming DVs are correlated 
-
-```{r}
-
-```
 
 ## Correlated at $r = .9$
 
@@ -211,13 +194,14 @@ When the DVs are correlated, their standard deviations should also be correlated
 Some issues with this:
 
 1. Compared to using a non-truncated multivariate normal distribution (Like your simulation), using a truncated normal distribution leads to smaller correlations between the sd of sd's when the mean's is close to the lower/upper bound. I think this is because many samples hit the bounds. See _Correlation between SD(SD) is smaller when means are close to boundaries_
-2. The covariance matrix wasn't positive semidefinite, so I ran a function which made the determinate > 0. 
-3. I don't think that WTP is normally distributed (it should be something like a lognormal). 
+2. I don't think that WTP is normally distributed (it should be something like a lognormal). 
 
 ```{r}
-# just look at the three main dependent variables
-tb1_dvs <- tbl1 %>% 
-  filter(variable %in% c("prod_eval", "wtp","app_sen_ind"))
+# subset dataframe with only three DVs
+tbl1_dvs <- tbl1 %>% 
+  filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
+  # arrange so consistent with function
+  arrange(variable)
 
 
 # set up correlation matrix
@@ -225,16 +209,9 @@ correlation <- .9
 cor_mat <- diag(1, 3, 3)
 cor_mat[cor_mat == 0] <- correlation
 
+# turn into a covariance matrix
 sigma <- cor2cov(cor_mat, c(1.71, 0.8026, 1.061))
 
-
-# make the pooled sd's variances
-diag(sigma) <- (c(1.71, 0.8026, 1.061))^2
-
-# make sigma positive definite
-# have to add tolerace
-# from: https://stackoverflow.com/questions/27176595/error-sigma-must-be-positive-definite
-sigma <- make.positive.definite(sigma, tol = 1e-3)
 # check that the determinate isn't 0
 det(sigma)
 
@@ -244,62 +221,65 @@ det(sigma)
 # INPUT:
 ## means: observed means (need to be in the following order: app_sen_ind, prod_eval, wtp)
 ## sigma: covariance matrix (same for every condition based on pooled sd's and equivalent correlations across conditions)
+## lower: lower bound of variable
+## upper: upper bound of varialbe
+## names: names of the variables
+## n: number of participants in that cell
 
 # OUTPUT:
 ## standard deviations of the three DVs from a sample from a multivariate normal distribution 
-sd_cor_fn <- function(means, sigma) {
+sd_cor_fn <- function(means, sigma, lower, upper, names, n) {
   
   # Pull from a truncated multivariate normal distribution
-  dvs <- rtmvnorm(
-    n = 11,
+  measures <- rtmvnorm(
+    n = n,
     mean = means,
     sigma = sigma,
-    lower = c(1, 1, 0),
-    upper = c(7, 7, 10)
+    lower = lower,
+    upper = upper
   )
   # Calc SDs and make pretty
-  sds <- apply(dvs, 2, sd)
-  names(sds) <- c("app_sen_ind", "prod_eval", "wtp")
+  sds <- apply(measures, 2, sd)
+  names(sds) <- names
   sds
 }
 
-
-# subset dataframe with only three DVs
-tbl1_dvs <- tbl1 %>% 
-  filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
-  # arrange so consistent with function
-  arrange(variable)
-
+reps <-  1e4
 # run multiple times
-replicates <- tbl1_dvs %>%
-  group_by(manip) %>%
-  arrange(variable) %>% 
-  # 
-  group_modify(~ replicate(
-    reps, 
-    (sd_cor_fn(
-      means = .x %>% pull(mean),
-      sigma)
-    ) 
-    )%>% 
-      t() %>% 
-      as_tibble()
-    )
+dvs_sds <- tbl1_dvs %>%
+    group_by(manip) %>%
+    arrange(variable) %>%
+    #
+    group_modify(~ replicate(reps,
+                             (
+                               sd_cor_fn(
+                                 means = .x %>% pull(mean),
+                                 sigma,
+                                 lower = .x %>%  pull(min_score),
+                                 upper = .x %>%   pull(max_score),
+                                 names = .x %>%  pull(variable),
+                                 n = .x %>%  pull(n_per) %>% `[`(1)
+                               )
+                             )) %>%
+                   t() %>%
+                   as_tibble()
+                 )
+
 
 # clean up dataframe
-replicates <- replicates %>% 
+dvs_sds <- dvs_sds %>% 
   group_by(manip) %>% 
   mutate(reps = 1:n())
 
 # create long version of dataframe 
-replicates_longer <- replicates %>% 
+dvs_sds_longer <- dvs_sds %>% 
   pivot_longer(cols = c(app_sen_ind, prod_eval, wtp))
 ```
 
 ### Correlation between standard deviations
 
 ```{r}
-reps_cors <- replicates %>% 
+reps_cors <- dvs_sds %>% 
   group_by(reps) %>% 
   summarise(sd_sd_app = sd(app_sen_ind),
             sd_sd_prd = sd(prod_eval),
@@ -308,12 +288,13 @@ reps_cors <- replicates %>%
 cor(reps_cors[, -1])
 ```
 
+this is close to  what Uri got
 
-Plot of simulated sds compared to observed sds
+## Plot of simulated sds compared to observed sds
 
 ```{r}
 # create dataframe which looks at each DV
-sd_sd_sim <- replicates_longer %>% 
+sd_sd_sim <- dvs_sds_longer %>% 
   group_by(name, reps) %>% 
   summarise(sd_sd_sim = sd(value),
             pooled_sd_sim = mean(value)) %>%
@@ -367,57 +348,6 @@ Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` o
 
 
 
-# Correlation between SD(SD) is smaller when means are close to boundaries
-
-Reminder: Scales were bounded at 1 and 7. WTP was bounded at 0
-
-When in the middle of the range, results are similar to your simulation. 
-$r = .9$
-
-$/mu = 3$
-
-```{r}
-r = .9  
-Sigma <- diag(1, 3, 3)
-Sigma[Sigma == 0] <- r
-ncond <- 5
-nrep <- 1000
-
-
-reps <- replicate(ncond*nrep, 
-                  sd_cor_fn(rep(4,3), Sigma))
-reps_wide <- t(reps) %>% 
-  as_tibble() %>% 
-  mutate(cond = rep(1:ncond, nrep),
-         rep = rep(1:nrep, each = ncond)) %>% 
-  group_by(rep) %>% 
-  summarise(sd_app_sen_ind = sd(app_sen_ind),
-            sd_prod_eval = sd(prod_eval),
-            sd_wtp = sd(wtp))
-
-# truncation depresses correlation between SDs when means are close to boundaries
-cor(reps_wide[, -1])
-```
-
-But when they're close to the endpoints they're smaller
-
-$/mu = 1.2$
-
-```{r}
-reps <- replicate(ncond*nrep, 
-                  sd_cor_fn(rep(1.2,3), Sigma))
-reps_wide <- t(reps) %>% 
-  as_tibble() %>% 
-  mutate(cond = rep(1:ncond, nrep),
-         rep = rep(1:nrep, each = ncond)) %>% 
-  group_by(rep) %>% 
-  summarise(sd_app_sen_ind = sd(app_sen_ind),
-            sd_prod_eval = sd(prod_eval),
-            sd_wtp = sd(wtp))
-
-# truncation depresses correlation between SDs when means are close to boundaries
-cor(reps_wide[, -1])
-```
 
 # Control variables
 
@@ -436,77 +366,23 @@ tbl1_ctrls <- tbl1 %>%
 
 # set up correlation and covariance matrix
 correlation <- .9
-sigma <- matrix(rep(NA, 36), nrow = 6, ncol = 6)
+cor_mat <- diag(1, 6, 6)
+cor_mat[cor_mat == 0] <- correlation
 
-# put variances on diagonal
-diag(sigma) <- tbl1_ctrls %>% group_by(variable) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev) %>% `^`(2)
-sigma[is.na(sigma)] <- correlation
-# make the pooled sd's variances
+# turn into a covariance matrix
+sigma <- cor2cov(cor_mat, tbl1_ctrls %>% group_by(variable) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev))
 
-
-# make sigma positive definite
-# have to add tolerace
-# from: https://stackoverflow.com/questions/27176595/error-sigma-must-be-positive-definite
-sigma <- make.positive.definite(sigma, tol = 1e-3)
 # check that the determinate isn't 0
 det(sigma)
 
-
-
-
-# Function which calculates SDs of DVs for correlated variables
-# INPUT:
-## means: observed means (need to be in the following order: app_sen_ind, prod_eval, wtp)
-## sigma: covariance matrix (same for every condition based on pooled sd's and equivalent correlations across conditions)
-
-# OUTPUT:
-## standard deviations of the three DVs from a sample from a multivariate normal distribution 
-sd_cor_fn2 <- function(means, sigma, lower, upper, names, n) {
-  
-  # Pull from a truncated multivariate normal distribution
-  measures <- rtmvnorm(
-    n = n,
-    mean = means,
-    sigma = sigma,
-    lower = lower,
-    upper = upper
-  )
-  # Calc SDs and make pretty
-  sds <- apply(measures, 2, sd)
-  names(sds) <- names
-  sds
-}
-sd_cor_fn2a <- function(means, sigma, lower, upper, names, n) {
-  
-  # Pull from a truncated multivariate normal distribution
-  measures <- rtmvnorm(
-    n = n,
-    mean = means,
-    sigma = sigma,
-    lower = lower,
-    upper = upper
-  )
-  measures
-}
-
-smp <-   sd_cor_fn2a(
-    means =  tbl1_ctrls %>% filter(manip == "approach") %>%  pull(mean),
-    sigma = sigma,
-    lower = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(min_score),
-    upper = tbl1_ctrls %>% filter(manip == "approach") %>%   pull(max_score),
-    names = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(variable),
-    n = tbl1_ctrls %>% filter(manip == "approach") %>%  pull(n_per) %>% `[`(1)
-  )
-
-  
-  # run multiple times
-  replicates <- tbl1_ctrls %>%
+# run multiple times
+ctrls_sds <- tbl1_ctrls %>%
     group_by(manip) %>%
     arrange(variable) %>%
     #
     group_modify(~ replicate(reps,
                              (
-                               sd_cor_fn2(
+                               sd_cor_fn(
                                  means = .x %>% pull(mean),
                                  sigma,
                                  lower = .x %>%  pull(min_score),
@@ -520,23 +396,23 @@ smp <-   sd_cor_fn2a(
                  )
   
 # clean up dataframe
-replicates <- replicates %>% 
+ctrls_sds <- ctrls_sds %>% 
   group_by(manip) %>% 
   mutate(reps = 1:n())
 
 # create long version of dataframe
-replicates_longer <- replicates %>%
+ctrls_sds_longer <- ctrls_sds %>%
   pivot_longer(cols = c(att_asn, att_unus, gen_app_avo, mood, out_ctrl, task_invol))
 
 ```
 
 ```{r}
-reps_cors <- replicates_longer %>% 
+ctrls_sds_cors <- ctrls_sds_longer %>% 
   group_by(reps, name) %>% 
   summarise(sd_sd_val = sd(value)) %>% 
   pivot_wider(names_from= name, values_from = sd_sd_val)
 
-cor(reps_cors[, -1])
+cor(ctrls_sds_cors[, -1])
 ```
 
 
@@ -544,7 +420,7 @@ Plot of simulated sds compared to observed sds
 
 ```{r}
 # create dataframe which looks at each DV
-sd_sd_sim <- replicates_longer %>% 
+sd_sd_sim <- ctrls_sds_longer %>% 
   group_by(name, reps) %>% 
   summarise(sd_sd_sim = sd(value),
             pooled_sd_sim = mean(value)) %>%
@@ -623,4 +499,267 @@ Not sure how to do this
 
 # Easier is not always better table 1
 
+```{r}
+nlsn_escls_tbl1 <- read_csv("nielsen-escalas-2010-tbl1.csv")
 
+nlsn_escls_tbl1 <- nlsn_escls_tbl1 %>% 
+  mutate(sd = se * sqrt(n_per))
+
+nlsn_escls_tbl1_sum <- nlsn_escls_tbl1 %>% 
+  group_by(dv) %>% 
+  summarise(sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
+
+
+# merge dataframes (need this for the simulation)
+nlsn_escls_tbl1 <- merge(nlsn_escls_tbl1, nlsn_escls_tbl1_sum)
+
+# set up correlation and covariance matrix
+correlation <- .9
+cor_mat <- diag(1, 4, 4)
+cor_mat[cor_mat == 0] <- correlation
+
+# turn into a covariance matrix
+sigma <- cor2cov(cor_mat, nlsn_escls_tbl1 %>% group_by(dv) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev))
+
+# check that the determinate isn't 0
+det(sigma)
+
+# run multiple times
+nlsn_escls_tbl1_sds <- nlsn_escls_tbl1 %>%
+    group_by(cond) %>%
+    arrange(dv) %>%
+    #
+    group_modify(~ replicate(reps,
+                             (
+                               sd_cor_fn(
+                                 means = .x %>% pull(mean),
+                                 sigma,
+                                 lower = .x %>%  pull(min_score),
+                                 upper = .x %>%   pull(max_score),
+                                 names = .x %>%  pull(dv),
+                                 n = .x %>%  pull(n_per) %>% `[`(1)
+                               )
+                             )) %>%
+                   t() %>%
+                   as_tibble()
+                 )
+  
+# clean up dataframe
+nlsn_escls_tbl1_sds <- nlsn_escls_tbl1_sds %>% 
+  group_by(cond) %>% 
+  mutate(reps = 1:n())
+
+# create long version of dataframe
+nlsn_escls_tbl1_sds_lng <- nlsn_escls_tbl1_sds %>%
+  pivot_longer(cols = -c(cond, reps))
+```
+
+
+
+```{r}
+nlsn_escls_tbl1_cors <- nlsn_escls_tbl1_sds_lng %>% 
+  group_by(reps, name) %>% 
+  summarise(sd_sd_val = sd(value)) %>% 
+  pivot_wider(names_from= name, values_from = sd_sd_val)
+
+cor(nlsn_escls_tbl1_cors[, -1])
+```
+
+
+Plot of simulated sds compared to observed sds
+
+```{r}
+# create dataframe which looks at each DV
+sd_sd_sim <- nlsn_escls_tbl1_sds_lng %>% 
+  group_by(name, reps) %>% 
+  summarise(sd_sd_sim = sd(value),
+            pooled_sd_sim = mean(value)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_tbl1$mean_n_obs[1])),
+         psi_sim = sd_sd_sim/se_sd_sim) %>% 
+  rename(dv = name)
+
+# join with observed sd of sds 
+sd_sd_sim <- sd_sd_sim %>% 
+  left_join(nlsn_escls_tbl1_sum)
+
+sd_sd_sim_wide <- sd_sd_sim %>% 
+  dplyr::select(reps, dv, sd_sd_sim) %>% 
+  pivot_wider(id_cols = reps,
+              values_from = sd_sd_sim,
+              names_from = dv)
+  
+
+# density plot
+sd_sd_sim %>% 
+  ggplot(aes(x = sd_sd_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = sd_sd_obs)) +
+  facet_grid(dv~.) +
+  theme_classic()
+
+
+```
+
+
+
+
+Now calculate $\psi$
+
+```{r}
+sim_meanpsi <- sd_sd_sim %>%
+  group_by(reps) %>%
+  # get mean psi for each replication
+  summarise(mean_psi_sim = mean(psi_sim),
+            psi_obs = mean(psi_obs)) %>%
+  # get the number of simulated SD's which are larger than the observed
+  mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+
+
+sim_meanpsi %>% 
+  ggplot(aes(x = mean_psi_sim)) +
+  geom_density() +
+  geom_vline(aes(xintercept = psi_obs)) +
+  theme_classic()
+
+```
+Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+
+# Easier is not always better table 2
+
+This only has 1 dv so no need for correlation across experiments
+
+
+```{r}
+nlsn_escls_tbl2 <- read_csv("nielsen-escalas-2010-tbl2.csv")
+
+nlsn_escls_tbl2 <- nlsn_escls_tbl2 %>% 
+  mutate(sd = se * sqrt(n_per))
+
+nlsn_escls_tbl2_sum <- nlsn_escls_tbl2 %>% 
+  summarise(sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
+
+
+nlsn_escls_tbl2 <- nlsn_escls_tbl2 %>% 
+  bind_cols(nlsn_escls_tbl2_sum %>% 
+  slice(rep(1:n(), each=8)))
+            
+            
+nlsn_escls_tbl2_reps <- nlsn_escls_tbl2 %>%
+  group_by(processing_inst, font, ad_type) %>%
+  do(sd_samp(df = ., reps = reps))
+
+# add in the replication number
+nlsn_escls_tbl2_reps <- nlsn_escls_tbl2_reps %>%
+  group_by(processing_inst, font, ad_type) %>%
+  mutate(n_rep = 1:reps) 
+
+# Summarized simulated data
+nlsn_escls_tbl2_reps_sum <- nlsn_escls_tbl2_reps %>% 
+  group_by(n_rep) %>%
+  summarise(sd_sd_sim = sd(sd_rep),
+            pooled_sd_sim = mean(sd_rep)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_tbl2$mean_n_obs[1])),
+         psi_sim = sd_sd_sim/se_sd_sim)
+
+
+(nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum
+```
+
+of the `r nrep` simulations `r (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum` had phis larger than the observed phi
+
+# Easier is not always better table 3
+
+This only has 1 dv so no need for correlation across dvs
+
+
+```{r}
+nlsn_escls_shpro_tbl3 <- read_csv("nielsen-escalas-2010-tbl3.csv")
+
+nlsn_escls_shpro_tbl3 <- nlsn_escls_shpro_tbl3 %>% 
+  mutate(sd = se * sqrt(n_per))
+
+nlsn_escls_shpro_tbl3_sum <- nlsn_escls_shpro_tbl3 %>% 
+  summarise(sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
+
+
+nlsn_escls_shpro_tbl3 <- nlsn_escls_shpro_tbl3 %>% 
+  bind_cols(nlsn_escls_shpro_tbl3_sum %>% 
+  slice(rep(1:n(), each=5)))
+            
+            
+nlsn_escls_shpro_tbl3_reps <- nlsn_escls_shpro_tbl3 %>%
+  group_by(image, font) %>%
+  do(sd_samp(df = ., reps = reps))
+
+# add in the replication number
+nlsn_escls_shpro_tbl3_reps <- nlsn_escls_shpro_tbl3_reps %>%
+  group_by(image, font) %>%
+  mutate(n_rep = 1:reps) 
+
+# Summarized simulated data
+nlsn_escls_shpro_tbl3_reps_sum <- nlsn_escls_shpro_tbl3_reps %>% 
+  group_by(n_rep) %>%
+  summarise(sd_sd_sim = sd(sd_rep),
+            pooled_sd_sim = mean(sd_rep)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_shpro_tbl3$mean_n_obs[1])),
+         psi_sim = sd_sd_sim/se_sd_sim)
+
+
+(nlsn_escls_shpro_tbl3_reps_sum$psi_sim > nlsn_escls_shpro_tbl3_sum$psi_obs) %>% sum
+```
+of the `r reps` simulated `r (nlsn_escls_shpro_tbl3_reps_sum$psi_sim > nlsn_escls_shpro_tbl3_sum$psi_obs) %>% sum` were higher than the observed phi
+
+# Nielsen and Shapiro 2009 Tbl 1
+
+## Fix this analysis
+```{r}
+nlsn_shpro_tbl1 <- read_csv("nielsen-shapiro-2009-tbl1-totals.csv")
+
+nlsn_shpro_tbl1 <- nlsn_shpro_tbl1 %>% 
+  mutate(sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
+
+
+nlsn_shpro_tbl1_reps <- nlsn_shpro_tbl1 %>%
+  group_by(fear_lvl, threat_rel) %>%
+  do(sd_samp(df = ., reps = reps))
+
+# add in the replication number
+nlsn_shpro_tbl1_reps <- nlsn_shpro_tbl1_reps %>%
+  group_by(fear_lvl, threat_rel) %>%
+  mutate(n_rep = 1:reps) 
+
+# Summarized simulated data
+nlsn_shpro_tbl1_reps_sum <- nlsn_shpro_tbl1_reps %>% 
+  group_by(fear_lvl, n_rep) %>%
+  summarise(sd_sd_sim = sd(sd_rep),
+            pooled_sd_sim = mean(sd_rep)) %>%
+    # get the simulated standard deviations and psi's
+  mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_shpro_tbl1$mean_n_obs[1])),
+         psi_sim = sd_sd_sim/se_sd_sim)
+
+nlsn_shpro_tbl1_reps_sum %>% 
+  left_join(nlsn_shpro_tbl1_sum)
+(nlsn_shpro_tbl1_reps_sum$psi_sim > nlsn_shpro_tbl1_sum$psi_obs[1]) %>% sum
+```
+
+of the `r reps` simulations `r (nlsn_shpro_tbl1_reps_sum$psi_sim > nlsn_shpro_tbl1_sum$psi_obs) %>% sum` were higher than the observed phi

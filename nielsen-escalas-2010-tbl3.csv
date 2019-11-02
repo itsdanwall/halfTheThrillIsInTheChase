@@ -1,6 +1,6 @@
-image,font,mean,se
-easy,easy,51.71,2.83
-easy,difficult,61.93,2.92
-easy,No font,53.38,53.38
-difficult,easy,61.64,2.54
-difficult,difficult,62.75,2.57
+image,font,mean,se,min_score,max_score,n_per
+easy,easy,51.71,2.83,1,100,47
+easy,difficult,61.93,2.92,1,100,47
+easy,No font,53.38,2.96,1,100,47
+difficult,easy,61.64,2.54,1,100,47
+difficult,difficult,62.75,2.57,1,100,47

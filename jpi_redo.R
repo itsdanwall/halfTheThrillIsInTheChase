@@ -34,7 +34,7 @@ jpi_tbl1 <- data.frame(cond = c("high", "low", "ctrl"),
 
 jpi_tbl1_reps <- jpi_tbl1 %>%
   group_by(cond) %>%
-  do(sd_samp(df = ., reps = 100000))
+  do(sd_samp(df = ., reps = 1000))
 
 jpi_tbl1_reps <-jpi_tbl1_reps %>%
   group_by(cond) %>%

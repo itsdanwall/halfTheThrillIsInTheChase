@@ -1,7 +1,7 @@
-threat_rel,word_type,fear_lvl,mean,se
-Yes,Drinking,low,423,34
-Yes,Drinking,high,534,29
-Yes,driving,low,477,32
-Yes,driving,high,573,27
-no,non_threat,low,536,29
-no,non_threat,high,567,25
+threat_rel,word_type,fear_lvl,mean,sd,min_score,max_score,n_per
+Yes,Drinking,low,423,34,100,5000,26
+Yes,Drinking,high,534,29,100,5000,35
+Yes,driving,low,477,32,100,5000,26
+Yes,driving,high,573,27,100,5000,35
+no,non_threat,low,536,29,100,5000,26
+no,non_threat,high,567,25,100,5000,35

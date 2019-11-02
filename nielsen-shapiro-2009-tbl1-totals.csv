@@ -1,0 +1,5 @@
+threat_rel,fear_lvl,mean,sd,min_score,max_score,n_per
+Yes,low,450,28,100,5000,26
+Yes,high,553,24,100,5000,35
+no,low,536,29,100,5000,26
+no,high,567,25,100,5000,35
