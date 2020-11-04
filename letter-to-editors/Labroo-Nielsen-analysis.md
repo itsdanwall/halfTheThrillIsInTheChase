@@ -12,21 +12,11 @@ output:
 ---
 
 
-```{r Setup, include=FALSE}
-library(truncnorm)
-# load packages
-library(mvtnorm)
-library(tmvtnorm)
-library(matrixcalc)
-library(corpcor)
-library(tidyverse)
-library(MBESS)
-# this dataframe is the long version of Table in the paper
-tbl1 <- read.csv("table1.csv", stringsAsFactors = FALSE)
-```
 
 
-```{r Functions}
+
+
+```r
 # This function takes in a data frame of characteristics and simulates nreps standard deviations
 sd_samp <- function(df, reps) {
   # Number of people in each cell
@@ -54,7 +44,8 @@ sd_samp <- function(df, reps) {
 ```
 
 
-```{r CleanData}
+
+```r
 # Add in the number of participants per cell and the standard deviation to table 1
 tbl1 <- tbl1 %>%
   mutate(n_per = 11,
@@ -73,13 +64,20 @@ tbl1_sum <- tbl1 %>%
             # http://urisohn.com/sohn_files/data/JustPostIt/SAS%20Code/(2)%20SAS%20-%20Sanna%20JESP%202011%20-%20bootstrapping.sas
             se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
             psi_obs = sd_sd_obs / se_sds_obs)
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
 # merge dataframes (need this for the simulation)
 tbl1 <- merge(tbl1, tbl1_sum)
 ```
 
 
-```{r SimulateSDs}
+
+```r
 reps <- 10000
 
 # simulate SDs
@@ -100,11 +98,23 @@ tbl1_reps_sum <- tbl1_reps %>%
     # get the simulated standard deviations and psi's
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
          psi_sim = sd_sd_sim/se_sd_sim)
+```
 
+```
+## `summarise()` regrouping output by 'variable' (override with `.groups` argument)
+```
+
+```r
 # merge simulated data with empirical data
 tbl1_reps_sum <- tbl1_reps_sum %>% 
   left_join(tbl1_sum)
+```
 
+```
+## Joining, by = "variable"
+```
+
+```r
 # compare the number of observed sds that are larger than the simulated sds
 tbl1_reps_sum <- tbl1_reps_sum %>%
   mutate(obs_gt_sim = ifelse(sd_sd_obs >= sd_sd_sim, TRUE, FALSE))
@@ -112,7 +122,11 @@ tbl1_reps_sum <- tbl1_reps_sum %>%
 
 # Summary 
 
+
+
 Labroo and Nielsen (2010) Experiment 1 "demonstrates a positive effect of embodied movement in space toward an otherwise aversive product."
+
+Labroo, A. A., & Nielsen, J. H. (2010). Half the thrill is in the chase: Twisted inferences from embodied cognitions and brand evaluation. Journal of Consumer Research, 37(1), 143-158.
 
 In table 1 of the paper, the standard deviations within measures are quite similar to one another. 
 
@@ -131,7 +145,8 @@ Density plots of the simulated standard deviations for each of the measures repo
 Vertical Lines represent the observed standard deviation of standard deviations. 
 Note that the observed standard deviations are all unlikely
 
-```{r Plot, fig.height=12}
+
+```r
 # plot the histograms
 ggplot(tbl1_reps_sum, aes(x = sd_sd_sim)) +
   geom_density() +
@@ -139,6 +154,8 @@ ggplot(tbl1_reps_sum, aes(x = sd_sd_sim)) +
   facet_grid(variable ~ .) +
   theme_classic()
 ```
+
+![](Labroo-Nielsen-analysis_files/figure-html/Plot-1.png)<!-- -->
 
 
 ## Combined measures
@@ -156,7 +173,8 @@ I refer to this number as $\psi$
 NOTE: Whereas Simonsohn (2013) combined dependent variables across multiple studies, I am combining across multiple measures within a single study.
 This is only an issue for high correlations between standard deviations. I relax the correlation assumption below. 
 
-```{r CalcPsi}
+
+```r
 sim_meanpsi <- tbl1_reps_sum %>%
   group_by(n_rep) %>%
   # get mean psi for each replication
@@ -167,20 +185,27 @@ sim_meanpsi <- tbl1_reps_sum %>%
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
 ```
 
-Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value. That is, the combined measure of the variability of standard deviation was higher for every simulation than the observed data. 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+Of the simulated standard deviations, 10000 of the 10^{4} had higher $\psi$ values than the observed $\psi$ value. That is, the combined measure of the variability of standard deviation was higher for every simulation than the observed data. 
 
 
 Density plot of the simulated $\psi$ values. 
 The observed $\psi$ value is denoted by a vertical line. 
 Note that the observed $\psi$ is below any of the simulated $\psi$ values. 
 
-```{r}
+
+```r
 sim_meanpsi %>% 
   ggplot(aes(x = mean_psi_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = psi_obs)) +
   theme_classic()
 ```
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-1-1.png)<!-- -->
 
 
 
@@ -193,7 +218,8 @@ This analysis assumes that the dependent variables are highly correlated.
 When the DVs are correlated, their standard deviations should also be correlated across conditions meaning $\psi$ values may also be correlated.
 
 
-```{r}
+
+```r
 # subset dataframe with only three DVs
 tbl1_dvs <- tbl1 %>% 
   filter(variable %in% c("app_sen_ind", "prod_eval", "wtp")) %>% 
@@ -241,7 +267,7 @@ sd_cor_fn <- function(means, sigma, lower, upper, names, n) {
   sds
 }
 
-reps <-  1e4
+reps <- 1e4
 # run multiple times
 dvs_sds <- tbl1_dvs %>%
     group_by(manip) %>%
@@ -275,20 +301,35 @@ dvs_sds_longer <- dvs_sds %>%
 
 ### Correlation between standard deviations
 
-```{r}
+
+```r
 reps_cors <- dvs_sds %>% 
   group_by(reps) %>% 
   summarise(sd_sd_app = sd(app_sen_ind),
             sd_sd_prd = sd(prod_eval),
             sd_sd_wtp = sd(wtp))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
 cor(reps_cors[, -1])
+```
+
+```
+##           sd_sd_app sd_sd_prd sd_sd_wtp
+## sd_sd_app 1.0000000 0.4500900 0.4229172
+## sd_sd_prd 0.4500900 1.0000000 0.4612811
+## sd_sd_wtp 0.4229172 0.4612811 1.0000000
 ```
 
 
 ### Plot of simulated sds compared to observed sds
 
-```{r}
+
+```r
 # create dataframe which looks at each DV
 sd_sd_sim <- dvs_sds_longer %>% 
   group_by(name, reps) %>% 
@@ -298,11 +339,23 @@ sd_sd_sim <- dvs_sds_longer %>%
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
          psi_sim = sd_sd_sim/se_sd_sim) %>% 
   rename(variable = name)
+```
 
+```
+## `summarise()` regrouping output by 'name' (override with `.groups` argument)
+```
+
+```r
 # join with observed sd of sds 
 sd_sd_sim <- sd_sd_sim %>% 
   left_join(tbl1_sum)
+```
 
+```
+## Joining, by = "variable"
+```
+
+```r
 sd_sd_sim_wide <- sd_sd_sim %>% 
   dplyr::select(reps, variable, sd_sd_sim) %>% 
   pivot_wider(id_cols = reps,
@@ -317,13 +370,14 @@ sd_sd_sim %>%
   geom_vline(aes(xintercept = sd_sd_obs)) +
   facet_grid(variable~.) +
   theme_classic()
-
-
 ```
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-4-1.png)<!-- -->
 
 Now calculate $\psi$
 
-```{r}
+
+```r
 sim_meanpsi <- sd_sd_sim %>%
   group_by(reps) %>%
   # get mean psi for each replication
@@ -331,21 +385,28 @@ sim_meanpsi <- sd_sd_sim %>%
             psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 sim_meanpsi %>% 
   ggplot(aes(x = mean_psi_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = psi_obs)) +
   theme_classic()
-
 ```
-Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-5-1.png)<!-- -->
+Of the simulated standard deviations, 9996 of the 10^{4} had higher $\psi$ values than the observed $\psi$ value.
 
 
 ## Assuming control variables are correlated at .9
 
-```{r}
+
+```r
 tbl1_ctrls <- tbl1 %>% 
   filter(!(variable %in% c("prod_eval", "wtp","app_sen_ind"))) %>% 
   mutate(variable = factor(variable,
@@ -365,10 +426,22 @@ cor_mat[cor_mat == 0] <- correlation
 
 # turn into a covariance matrix
 sigma <- cor2cov(cor_mat, tbl1_ctrls %>% group_by(variable) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
 # check that the determinate isn't 0
 det(sigma)
+```
 
+```
+## [1] 0.001868709
+```
+
+```r
 # run multiple times
 ctrls_sds <- tbl1_ctrls %>%
     group_by(manip) %>%
@@ -397,22 +470,39 @@ ctrls_sds <- ctrls_sds %>%
 # create long version of dataframe
 ctrls_sds_longer <- ctrls_sds %>%
   pivot_longer(cols = c(att_asn, att_unus, gen_app_avo, mood, out_ctrl, task_invol))
-
 ```
 
-```{r}
+
+```r
 ctrls_sds_cors <- ctrls_sds_longer %>% 
   group_by(reps, name) %>% 
   summarise(sd_sd_val = sd(value)) %>% 
   pivot_wider(names_from= name, values_from = sd_sd_val)
+```
 
+```
+## `summarise()` regrouping output by 'reps' (override with `.groups` argument)
+```
+
+```r
 cor(ctrls_sds_cors[, -1])
+```
+
+```
+##               att_asn  att_unus gen_app_avo      mood  out_ctrl task_invol
+## att_asn     1.0000000 0.3734990   0.3567361 0.3875553 0.3755219  0.3649730
+## att_unus    0.3734990 1.0000000   0.3803724 0.3745716 0.3753450  0.3635237
+## gen_app_avo 0.3567361 0.3803724   1.0000000 0.3682108 0.3665348  0.3535342
+## mood        0.3875553 0.3745716   0.3682108 1.0000000 0.3732249  0.3587746
+## out_ctrl    0.3755219 0.3753450   0.3665348 0.3732249 1.0000000  0.3741967
+## task_invol  0.3649730 0.3635237   0.3535342 0.3587746 0.3741967  1.0000000
 ```
 
 
 Plot of simulated sds compared to observed sds
 
-```{r}
+
+```r
 # create dataframe which looks at each DV
 sd_sd_sim <- ctrls_sds_longer %>% 
   group_by(name, reps) %>% 
@@ -422,11 +512,23 @@ sd_sd_sim <- ctrls_sds_longer %>%
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * 11)),
          psi_sim = sd_sd_sim/se_sd_sim) %>% 
   rename(variable = name)
+```
 
+```
+## `summarise()` regrouping output by 'name' (override with `.groups` argument)
+```
+
+```r
 # join with observed sd of sds 
 sd_sd_sim <- sd_sd_sim %>% 
   left_join(tbl1_sum)
+```
 
+```
+## Joining, by = "variable"
+```
+
+```r
 sd_sd_sim_wide <- sd_sd_sim %>% 
   dplyr::select(reps, variable, sd_sd_sim) %>% 
   pivot_wider(id_cols = reps,
@@ -441,13 +543,14 @@ sd_sd_sim %>%
   geom_vline(aes(xintercept = sd_sd_obs)) +
   facet_grid(variable~.) +
   theme_classic()
-
-
 ```
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-8-1.png)<!-- -->
 
 Now calculate $\psi$
 
-```{r}
+
+```r
 sim_meanpsi <- sd_sd_sim %>%
   group_by(reps) %>%
   # get mean psi for each replication
@@ -455,16 +558,22 @@ sim_meanpsi <- sd_sd_sim %>%
             psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 sim_meanpsi %>% 
   ggplot(aes(x = mean_psi_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = psi_obs)) +
   theme_classic()
-
 ```
-Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-9-1.png)<!-- -->
+Of the simulated standard deviations, 10000 of the 10^{4} had higher $\psi$ values than the observed $\psi$ value.
 
 
 
@@ -491,9 +600,25 @@ Nielsen, J. H., & Escalas, J. E. (2010). Easier is not always better: The modera
 ![Easier Better Table 1](easier-better-table1.PNG)
 
 
-```{r}
-nlsn_escls_tbl1 <- read_csv("nielsen-escalas-2010-tbl1.csv")
 
+```r
+nlsn_escls_tbl1 <- read_csv("nielsen-escalas-2010-tbl1.csv")
+```
+
+```
+## Parsed with column specification:
+## cols(
+##   dv = col_character(),
+##   cond = col_character(),
+##   mean = col_double(),
+##   se = col_double(),
+##   min_score = col_double(),
+##   max_score = col_double(),
+##   n_per = col_double()
+## )
+```
+
+```r
 nlsn_escls_tbl1 <- nlsn_escls_tbl1 %>% 
   mutate(sd = se * sqrt(n_per))
 
@@ -504,8 +629,13 @@ nlsn_escls_tbl1_sum <- nlsn_escls_tbl1 %>%
             mean_n_obs = mean(n_per),
             se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
             psi_obs = sd_sd_obs / se_sds_obs)
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 # merge dataframes (need this for the simulation)
 nlsn_escls_tbl1 <- merge(nlsn_escls_tbl1, nlsn_escls_tbl1_sum)
 
@@ -516,10 +646,22 @@ cor_mat[cor_mat == 0] <- correlation
 
 # turn into a covariance matrix
 sigma <- cor2cov(cor_mat, nlsn_escls_tbl1 %>% group_by(dv) %>% summarise(std_dev = pooled_sd_obs[1]) %>% pull(std_dev))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
 # check that the determinate isn't 0
 det(sigma)
+```
 
+```
+## [1] 1.225041
+```
+
+```r
 # run multiple times
 nlsn_escls_tbl1_sds <- nlsn_escls_tbl1 %>%
     group_by(cond) %>%
@@ -552,19 +694,35 @@ nlsn_escls_tbl1_sds_lng <- nlsn_escls_tbl1_sds %>%
 
 
 
-```{r}
+
+```r
 nlsn_escls_tbl1_cors <- nlsn_escls_tbl1_sds_lng %>% 
   group_by(reps, name) %>% 
   summarise(sd_sd_val = sd(value)) %>% 
   pivot_wider(names_from= name, values_from = sd_sd_val)
+```
 
+```
+## `summarise()` regrouping output by 'reps' (override with `.groups` argument)
+```
+
+```r
 cor(nlsn_escls_tbl1_cors[, -1])
+```
+
+```
+##           good_bad  oval_opn       try  use_more
+## good_bad 1.0000000 0.3726161 0.3407642 0.2908887
+## oval_opn 0.3726161 1.0000000 0.3581662 0.3208960
+## try      0.3407642 0.3581662 1.0000000 0.3351325
+## use_more 0.2908887 0.3208960 0.3351325 1.0000000
 ```
 
 
 Plot of simulated sds compared to observed sds
 
-```{r}
+
+```r
 # create dataframe which looks at each DV
 sd_sd_sim <- nlsn_escls_tbl1_sds_lng %>% 
   group_by(name, reps) %>% 
@@ -574,11 +732,23 @@ sd_sd_sim <- nlsn_escls_tbl1_sds_lng %>%
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_tbl1$mean_n_obs[1])),
          psi_sim = sd_sd_sim/se_sd_sim) %>% 
   rename(dv = name)
+```
 
+```
+## `summarise()` regrouping output by 'name' (override with `.groups` argument)
+```
+
+```r
 # join with observed sd of sds 
 sd_sd_sim <- sd_sd_sim %>% 
   left_join(nlsn_escls_tbl1_sum)
+```
 
+```
+## Joining, by = "dv"
+```
+
+```r
 sd_sd_sim_wide <- sd_sd_sim %>% 
   dplyr::select(reps, dv, sd_sd_sim) %>% 
   pivot_wider(id_cols = reps,
@@ -593,16 +763,17 @@ sd_sd_sim %>%
   geom_vline(aes(xintercept = sd_sd_obs)) +
   facet_grid(dv~.) +
   theme_classic()
-
-
 ```
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
 
 
 
 
 Now calculate $\psi$
 
-```{r}
+
+```r
 sim_meanpsi <- sd_sd_sim %>%
   group_by(reps) %>%
   # get mean psi for each replication
@@ -610,16 +781,22 @@ sim_meanpsi <- sd_sd_sim %>%
             psi_obs = mean(psi_obs)) %>%
   # get the number of simulated SD's which are larger than the observed
   mutate(simpsi_gt_stupsi = ifelse(mean_psi_sim > psi_obs, TRUE, FALSE))
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 sim_meanpsi %>% 
   ggplot(aes(x = mean_psi_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = psi_obs)) +
   theme_classic()
-
 ```
-Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` of the `r reps` had higher $\psi$ values than the observed $\psi$ value.
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-13-1.png)<!-- -->
+Of the simulated standard deviations, 10000 of the 10^{4} had higher $\psi$ values than the observed $\psi$ value.
 
 
 ### Table 2
@@ -630,9 +807,26 @@ Of the simulated standard deviations, `r sim_meanpsi$simpsi_gt_stupsi %>% sum` o
 This only has 1 dv so no need for correlation across experiments
 
 
-```{r}
-nlsn_escls_tbl2 <- read_csv("nielsen-escalas-2010-tbl2.csv")
 
+```r
+nlsn_escls_tbl2 <- read_csv("nielsen-escalas-2010-tbl2.csv")
+```
+
+```
+## Parsed with column specification:
+## cols(
+##   processing_inst = col_character(),
+##   font = col_character(),
+##   ad_type = col_character(),
+##   mean = col_double(),
+##   se = col_double(),
+##   min_score = col_double(),
+##   max_score = col_double(),
+##   n_per = col_double()
+## )
+```
+
+```r
 nlsn_escls_tbl2 <- nlsn_escls_tbl2 %>% 
   mutate(sd = se * sqrt(n_per))
 
@@ -666,17 +860,23 @@ nlsn_escls_tbl2_reps_sum <- nlsn_escls_tbl2_reps %>%
     # get the simulated standard deviations and psi's
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_tbl2$mean_n_obs[1])),
          psi_sim = sd_sd_sim/se_sd_sim)
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 nlsn_escls_tbl2_reps_sum %>% 
   ggplot(aes(x = psi_sim)) +
   geom_density() +
   geom_vline(aes(xintercept = nlsn_escls_tbl2_sum$psi_obs)) +
   theme_classic()
-# (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum
 ```
 
-of the `r nrep` simulations `r (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum` had phis larger than the observed phi
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
+
+of the 10^{4} simulations 10000 had phis larger than the observed phi
 
 ### Table 3
 
@@ -685,9 +885,25 @@ of the `r nrep` simulations `r (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tb
 This only has 1 dv so no need for correlation across dvs
 
 
-```{r}
-nlsn_escls_shpro_tbl3 <- read_csv("nielsen-escalas-2010-tbl3.csv")
 
+```r
+nlsn_escls_shpro_tbl3 <- read_csv("nielsen-escalas-2010-tbl3.csv")
+```
+
+```
+## Parsed with column specification:
+## cols(
+##   image = col_character(),
+##   font = col_character(),
+##   mean = col_double(),
+##   se = col_double(),
+##   min_score = col_double(),
+##   max_score = col_double(),
+##   n_per = col_double()
+## )
+```
+
+```r
 nlsn_escls_shpro_tbl3 <- nlsn_escls_shpro_tbl3 %>% 
   mutate(sd = se * sqrt(n_per))
 
@@ -721,8 +937,13 @@ nlsn_escls_shpro_tbl3_reps_sum <- nlsn_escls_shpro_tbl3_reps %>%
     # get the simulated standard deviations and psi's
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_escls_shpro_tbl3$mean_n_obs[1])),
          psi_sim = sd_sd_sim/se_sd_sim)
+```
 
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
 
+```r
 # (nlsn_escls_shpro_tbl3_reps_sum$psi_sim > nlsn_escls_shpro_tbl3_sum$psi_obs) %>% sum
 
 
@@ -732,7 +953,9 @@ nlsn_escls_shpro_tbl3_reps_sum %>%
   geom_vline(aes(xintercept = nlsn_escls_shpro_tbl3_sum$psi_obs)) +
   theme_classic()
 ```
-of the `r reps` simulated `r (nlsn_escls_shpro_tbl3_reps_sum$psi_sim > nlsn_escls_shpro_tbl3_sum$psi_obs) %>% sum` were higher than the observed phi
+
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
+of the 10^{4} simulated 7072 were higher than the observed phi
 
 ## Automatic Suppression
 
@@ -742,9 +965,25 @@ Nielsen, J. H., & Shapiro, S. (2009). Coping with fear appeals through spreading
 
 ### Table 1
 
-```{r}
-nlsn_shpro_tbl1 <- read_csv("nielsen-shapiro-2009-tbl1-totals.csv")
 
+```r
+nlsn_shpro_tbl1 <- read_csv("nielsen-shapiro-2009-tbl1-totals.csv")
+```
+
+```
+## Parsed with column specification:
+## cols(
+##   threat_rel = col_character(),
+##   fear_lvl = col_character(),
+##   mean = col_double(),
+##   sd = col_double(),
+##   min_score = col_double(),
+##   max_score = col_double(),
+##   n_per = col_double()
+## )
+```
+
+```r
 nlsn_shpro_tbl1_sum <- nlsn_shpro_tbl1 %>% 
   summarise(sd_sd_obs = sd(sd),
             pooled_sd_obs = mean(sd),
@@ -753,7 +992,12 @@ nlsn_shpro_tbl1_sum <- nlsn_shpro_tbl1 %>%
             psi_obs = sd_sd_obs / se_sds_obs)
 
 
-
+nlsn_shpro_tbl1 <- nlsn_shpro_tbl1%>% 
+  mutate (sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
 
 nlsn_shpro_tbl1_reps <- nlsn_shpro_tbl1 %>%
   group_by(fear_lvl, threat_rel) %>%
@@ -772,11 +1016,13 @@ nlsn_shpro_tbl1_reps_sum <- nlsn_shpro_tbl1_reps %>%
     # get the simulated standard deviations and psi's
   mutate(se_sd_sim = pooled_sd_sim/(sqrt(2 * nlsn_shpro_tbl1$mean_n_obs[1])),
          psi_sim = sd_sd_sim/se_sd_sim)
+```
 
+```
+## `summarise()` regrouping output by 'fear_lvl' (override with `.groups` argument)
+```
 
-
-
-
+```r
 nlsn_shpro_tbl1_reps_sum %>% 
   ggplot(aes(x = psi_sim)) +
   geom_density() +
@@ -784,7 +1030,9 @@ nlsn_shpro_tbl1_reps_sum %>%
   theme_classic()
 ```
 
-of the `r reps` simulations `r (nlsn_shpro_tbl1_reps_sum$psi_sim > nlsn_shpro_tbl1_sum$psi_obs) %>% sum` were higher than the observed psi
+![](Labroo-Nielsen-analysis_files/figure-html/unnamed-chunk-16-1.png)<!-- -->
+
+of the 10^{4} simulations 9846 were higher than the observed psi
 
 
 

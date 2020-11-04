@@ -1,0 +1,9 @@
+dv,cond,mean,se,min_score,max_score,n_per
+oval_opn,difficult,5,0.33,1,9,43
+good_bad,difficult,5.24,0.32,1,9,43
+try,difficult,4.38,0.34,1,9,43
+use_more,difficult,3.55,0.27,1,9,43
+oval_opn,easy,6.51,0.34,1,9,43
+good_bad,easy,6.81,0.32,1,9,43
+try,easy,6.1,0.34,1,9,43
+use_more,easy,5.49,0.27,1,9,43

@@ -112,7 +112,11 @@ tbl1_reps_sum <- tbl1_reps_sum %>%
 
 # Summary 
 
+
+
 Labroo and Nielsen (2010) Experiment 1 "demonstrates a positive effect of embodied movement in space toward an otherwise aversive product."
+
+Labroo, A. A., & Nielsen, J. H. (2010). Half the thrill is in the chase: Twisted inferences from embodied cognitions and brand evaluation. Journal of Consumer Research, 37(1), 143-158.
 
 In table 1 of the paper, the standard deviations within measures are quite similar to one another. 
 
@@ -241,7 +245,7 @@ sd_cor_fn <- function(means, sigma, lower, upper, names, n) {
   sds
 }
 
-reps <-  1e4
+reps <- 1e4
 # run multiple times
 dvs_sds <- tbl1_dvs %>%
     group_by(manip) %>%
@@ -631,6 +635,7 @@ This only has 1 dv so no need for correlation across experiments
 
 
 ```{r}
+
 nlsn_escls_tbl2 <- read_csv("nielsen-escalas-2010-tbl2.csv")
 
 nlsn_escls_tbl2 <- nlsn_escls_tbl2 %>% 
@@ -673,10 +678,9 @@ nlsn_escls_tbl2_reps_sum %>%
   geom_density() +
   geom_vline(aes(xintercept = nlsn_escls_tbl2_sum$psi_obs)) +
   theme_classic()
-# (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum
 ```
 
-of the `r nrep` simulations `r (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum` had phis larger than the observed phi
+of the `r reps` simulations `r (nlsn_escls_tbl2_reps_sum$psi_sim > nlsn_escls_tbl2_sum$psi_obs) %>% sum` had phis larger than the observed phi
 
 ### Table 3
 
@@ -753,7 +757,12 @@ nlsn_shpro_tbl1_sum <- nlsn_shpro_tbl1 %>%
             psi_obs = sd_sd_obs / se_sds_obs)
 
 
-
+nlsn_shpro_tbl1 <- nlsn_shpro_tbl1%>% 
+  mutate (sd_sd_obs = sd(sd),
+            pooled_sd_obs = mean(sd),
+            mean_n_obs = mean(n_per),
+            se_sds_obs = pooled_sd_obs/(sqrt(2*mean_n_obs)),
+            psi_obs = sd_sd_obs / se_sds_obs)
 
 nlsn_shpro_tbl1_reps <- nlsn_shpro_tbl1 %>%
   group_by(fear_lvl, threat_rel) %>%

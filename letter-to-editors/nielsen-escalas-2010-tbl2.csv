@@ -1,0 +1,9 @@
+processing_inst,font,ad_type,mean,se,min_score,max_score,n_per
+standard,easy,narrative,56.9,3.98,1,100,32
+standard,easy,analytical,59.15,3.96,1,100,32
+standard,difficult,narrative,66.16,4.16,1,100,32
+standard,difficult,analytical,49.06,4.08,1,100,32
+skeptic,easy,narrative,55.87,3.97,1,100,32
+skeptic,easy,analytical,59.87,3.96,1,100,32
+skeptic,difficult,narrative,44.95,3.96,1,100,32
+skeptic,difficult,analytical,61.46,3.9,1,100,32
